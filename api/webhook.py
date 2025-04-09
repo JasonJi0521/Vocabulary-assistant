@@ -6,6 +6,9 @@ from telegram import Update
 import asyncio
 import sys
 import json
+import traceback
+import nest_asyncio
+nest_asyncio.apply()
 
 # Ensure utils/ folder is in the path for import
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
@@ -61,11 +64,10 @@ def webhook():
             else:
                 await bot.send_message(chat_id=chat_id, text=f"Want to add \"{text}\"? Try: /add {text}")
 
-        asyncio.run(respond())
+        asyncio.get_event_loop().run_until_complete(respond())
         return "OK"
 
     except Exception as e:
-        import traceback
         print("❌ Uncaught error in webhook handler!")
         traceback.print_exc()  # 👈 this prints the full traceback to Vercel logs
         return "Error", 500
