@@ -5,6 +5,7 @@ import telegram
 from telegram import Update
 import asyncio
 import sys
+import json
 
 # Ensure utils/ folder is in the path for import
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
