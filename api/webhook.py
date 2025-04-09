@@ -50,5 +50,9 @@ def webhook():
         else:
             await bot.send_message(chat_id=chat_id, text=f"Want to add \"{text}\"? Try: /add {text}")
 
-    asyncio.run(respond())
-    return "OK"
+    try:
+        asyncio.run(respond())
+        return "OK"
+    except Exception as e:
+        print("❌ Error in webhook POST:", e)
+        return "Error", 500
