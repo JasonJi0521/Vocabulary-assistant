@@ -50,6 +50,11 @@ def build_bot_app():
 
 
 class handler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.end_headers()
+        self.wfile.write(b"✅ Vocabulary bot webhook is up and running.")
+
     def do_POST(self):
         content_len = int(self.headers.get('Content-Length', 0))
         raw_data = self.rfile.read(content_len)
