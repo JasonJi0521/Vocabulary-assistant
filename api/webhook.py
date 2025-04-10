@@ -57,19 +57,30 @@ class handler(BaseHTTPRequestHandler):
             "✅ Vocabulary bot webhook is up and running.".encode("utf-8"))
 
     def do_POST(self):
-        content_len = int(self.headers.get('Content-Length', 0))
-        raw_data = self.rfile.read(content_len)
-        data = json.loads(raw_data.decode("utf-8"))
+        try:
+            content_len = int(self.headers.get('Content-Length', 0))
+            raw_data = self.rfile.read(content_len)
+            data = json.loads(raw_data.decode("utf-8"))
 
-        update = Update.de_json(data, build_bot_app().bot)
+            print("📨 Telegram Update Received:\n", json.dumps(data, indent=2))
 
-        # Process one update, no persistent loop
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        bot_app = build_bot_app()
-        loop.run_until_complete(bot_app.process_update(update))
-        loop.close()
+            update = Update.de_json(data, build_bot_app().bot)
 
-        self.send_response(200)
-        self.end_headers()
-        self.wfile.write(b"OK")
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            bot_app = build_bot_app()
+            loop.run_until_complete(bot_app.process_update(update))
+            loop.close()
+
+            self.send_response(200)
+            self.end_headers()
+            self.wfile.write(b"OK")
+
+        except Exception as e:
+            import traceback
+            print("❌ Fatal error in do_POST:")
+            traceback.print_exc()
+
+            self.send_response(500)
+            self.end_headers()
+            self.wfile.write("Internal Server Error".encode("utf-8"))
