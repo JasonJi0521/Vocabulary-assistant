@@ -4,7 +4,7 @@ from telegram import Update
 from telegram.ext import Application, CommandHandler, ContextTypes
 from utils.vocabulary_processor import process_new_word, get_random_words
 import asyncio
-from telegram.error import TelegramError
+from telegram import Update
 from telegram.ext import ContextTypes
 
 TELEGRAM_TOKEN = os.environ["TELEGRAM_BOT_TOKEN"]
@@ -47,16 +47,28 @@ async def send_words(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
-    print("❌ An error occurred in a handler:")
-    if context.error:
-        import traceback
-        traceback.print_exception(
-            type(context.error), context.error, context.error.__traceback__)
-    if isinstance(update, Update) and update.effective_chat:
-        await context.bot.send_message(
-            chat_id=update.effective_chat.id,
-            text="⚠️ Oops! Something went wrong. Please try again later."
-        )
+    try:
+        print("❌ An error occurred during a bot update:")
+        if context.error:
+            import traceback
+            traceback.print_exception(
+                type(context.error),
+                context.error,
+                context.error.__traceback__
+            )
+
+        # Safely notify user if possible
+        if isinstance(update, Update) and update.effective_chat:
+            try:
+                await context.bot.send_message(
+                    chat_id=update.effective_chat.id,
+                    text="⚠️ Oops! Something went wrong. Please try again later."
+                )
+            except Exception as notify_err:
+                print("⚠️ Failed to notify user:", notify_err)
+
+    except Exception as handler_error:
+        print("❗ Uncaught error in error_handler itself:", handler_error)
 
 # Register Handlers
 bot_app.add_handler(CommandHandler("start", start))
