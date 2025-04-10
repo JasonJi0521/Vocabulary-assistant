@@ -1,88 +1,69 @@
 import os
-from fastapi import FastAPI, Request
-from telegram import Update
-from telegram.ext import Application, CommandHandler, ContextTypes
-from utils.vocabulary_processor import process_new_word, get_random_words
+import json
 import asyncio
+from http.server import BaseHTTPRequestHandler
 from telegram import Update
-from telegram.ext import ContextTypes
+from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
 
-TELEGRAM_TOKEN = os.environ["TELEGRAM_BOT_TOKEN"]
-bot_app = Application.builder().token(TELEGRAM_TOKEN).build()
+from utils.vocabulary_processor import process_new_word, get_random_words
 
-# FastAPI app
-app = FastAPI()
-
-# Telegram Handlers
+# Rebuild the application every request (stateless mode)
 
 
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(
-        "Welcome to your Vocabulary Assistant! 📘\n"
-        "- Use /add [word] to add a word.\n"
-        "- Use /send to get 5 review words."
-    )
+def build_bot_app():
+    app = ApplicationBuilder().token(os.environ["TELEGRAM_BOT_TOKEN"]).build()
+
+    async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        await update.message.reply_text(
+            "Welcome to your Vocabulary Assistant! 📘\n"
+            "- Use /add [word] to add a new word.\n"
+            "- Use /send to review 5 random words."
+        )
+
+    async def add_word(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        if not context.args:
+            await update.message.reply_text("Usage: /add [word]")
+            return
+        word = " ".join(context.args)
+        success, msg = process_new_word(word)
+        await update.message.reply_text(msg)
+
+    async def send_words(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        words = get_random_words(5)
+        if not words:
+            await update.message.reply_text("No words found.")
+            return
+        msg = "📚 *Your Vocabulary Review* 📚\n\n"
+        for i, word in enumerate(words, 1):
+            msg += f"*{i}. {word['word']}* ({word['word_class']})\n"
+            msg += f"🇨🇳 {word['cn_meaning']}\n"
+            msg += f"🇬🇧 {word['explanation']}\n\n"
+        await update.message.reply_text(msg, parse_mode="Markdown")
+
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("help", start))
+    app.add_handler(CommandHandler("add", add_word))
+    app.add_handler(CommandHandler("send", send_words))
+    return app
+
+# Vercel-compatible serverless webhook handler
 
 
-async def add_word(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not context.args:
-        await update.message.reply_text("Please provide a word: /add [word]")
-        return
-    word = " ".join(context.args)
-    success, message = process_new_word(word)
-    await update.message.reply_text(message)
+class handler(BaseHTTPRequestHandler):
+    def do_POST(self):
+        content_len = int(self.headers.get('Content-Length', 0))
+        raw_data = self.rfile.read(content_len)
+        data = json.loads(raw_data.decode("utf-8"))
 
+        update = Update.de_json(data, build_bot_app().bot)
 
-async def send_words(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    words = get_random_words(5)
-    if not words:
-        await update.message.reply_text("No words in your vocabulary book.")
-        return
-    msg = "📚 *Your Vocabulary Review* 📚\n\n"
-    for i, word in enumerate(words, 1):
-        msg += f"*{i}. {word['word']}* ({word['word_class']})\n"
-        msg += f"🇨🇳 {word['cn_meaning']}\n"
-        msg += f"🇬🇧 {word['explanation']}\n\n"
-    await update.message.reply_text(msg, parse_mode="Markdown")
+        # Process one update, no persistent loop
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        bot_app = build_bot_app()
+        loop.run_until_complete(bot_app.process_update(update))
+        loop.close()
 
-
-async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
-    try:
-        print("❌ An error occurred during a bot update:")
-        if context.error:
-            import traceback
-            traceback.print_exception(
-                type(context.error),
-                context.error,
-                context.error.__traceback__
-            )
-
-        # Safely notify user if possible
-        if isinstance(update, Update) and update.effective_chat:
-            try:
-                await context.bot.send_message(
-                    chat_id=update.effective_chat.id,
-                    text="⚠️ Oops! Something went wrong. Please try again later."
-                )
-            except Exception as notify_err:
-                print("⚠️ Failed to notify user:", notify_err)
-
-    except Exception as handler_error:
-        print("❗ Uncaught error in error_handler itself:", handler_error)
-
-# Register Handlers
-bot_app.add_handler(CommandHandler("start", start))
-bot_app.add_handler(CommandHandler("help", start))
-bot_app.add_handler(CommandHandler("add", add_word))
-bot_app.add_handler(CommandHandler("send", send_words))
-bot_app.add_error_handler(error_handler)
-
-
-@app.post("/")
-async def telegram_webhook(request: Request):
-    body = await request.json()
-    update = Update.de_json(body, bot_app.bot)
-
-    await bot_app.initialize()
-    await bot_app.process_update(update)
-    return {"ok": True}
+        self.send_response(200)
+        self.end_headers()
+        self.wfile.write(b"OK")
