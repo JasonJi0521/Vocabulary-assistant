@@ -53,7 +53,8 @@ class handler(BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
         self.end_headers()
-        self.wfile.write(b"✅ Vocabulary bot webhook is up and running.")
+        self.wfile.write(
+            "✅ Vocabulary bot webhook is up and running.".encode("utf-8"))
 
     def do_POST(self):
         content_len = int(self.headers.get('Content-Length', 0))
