@@ -1,6 +1,6 @@
-flask
 python-telegram-bot==20.0
 openai
 notion-client
-nest_asyncio
+flask  # optional if used elsewhere
 requests
+nest_asyncio

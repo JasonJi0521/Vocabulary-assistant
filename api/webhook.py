@@ -1,73 +1,60 @@
-from utils.vocabulary_processor import process_new_word, get_random_words
-from flask import Flask, request
 import os
-import telegram
 from telegram import Update
-import asyncio
-import sys
-import json
-import traceback
-import nest_asyncio
-nest_asyncio.apply()
+from telegram.ext import Application, CommandHandler, ContextTypes
+from utils.vocabulary_processor import process_new_word, get_random_words
 
-# Ensure utils/ folder is in the path for import
-sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
+# Define bot handlers
 
 
-# Setup Telegram bot
-TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
-bot = telegram.Bot(token=TOKEN)
+async def add_word(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not context.args:
+        await update.message.reply_text("Please provide a word to add. Usage: /add [word]")
+        return
 
-app = Flask(__name__)
+    word = " ".join(context.args)
+    success, message = process_new_word(word)
+    await update.message.reply_text(message)
 
 
-@app.route("/", methods=["POST"])
-def webhook():
-    try:
-        data = request.get_json(force=True)
-        print("📨 Incoming Telegram Update:\n", json.dumps(data, indent=2))
+async def send_words(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    words = get_random_words(5)
+    if not words:
+        await update.message.reply_text("No words found in your vocabulary book.")
+        return
 
-        update = Update.de_json(data, bot)
-        if not update or not update.message or not update.message.text:
-            print("⚠️ No valid message in the update")
-            return "No message", 200
+    message_text = "📚 *Your Vocabulary Review* 📚\n\n"
+    for i, word in enumerate(words, 1):
+        message_text += f"*{i}. {word['word']}* ({word['word_class']})\n"
+        message_text += f"🇨🇳 {word['cn_meaning']}\n"
+        message_text += f"🇬🇧 {word['explanation']}\n\n"
 
-        chat_id = update.message.chat.id
-        text = update.message.text.strip()
-        print(f"➡️ Message received: '{text}' from chat {chat_id}")
+    await update.message.reply_text(message_text, parse_mode="Markdown")
 
-        async def respond():
-            if text.startswith("/add "):
-                word = text[5:].strip()
-                success, message = process_new_word(word)
-                print(f"📘 Add result: {message}")
-                await bot.send_message(chat_id=chat_id, text=message)
 
-            elif text == "/send":
-                words = get_random_words(5)
-                if words:
-                    msg = "📚 *Your Vocabulary Review* 📚\n\n"
-                    for i, word in enumerate(words, 1):
-                        msg += f"*{i}. {word['word']}* ({word['word_class']})\n"
-                        msg += f"🇨🇳 {word['cn_meaning']}\n"
-                        msg += f"🇬🇧 {word['explanation']}\n\n"
-                    await bot.send_message(chat_id=chat_id, text=msg, parse_mode="Markdown")
-                else:
-                    await bot.send_message(chat_id=chat_id, text="No words found in your vocabulary book.")
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text(
+        "Welcome to your Vocabulary Assistant! 📘\n"
+        "- Use /add [word] to add a new word.\n"
+        "- Use /send to review 5 random words."
+    )
 
-            elif text in ["/start", "/help"]:
-                await bot.send_message(chat_id=chat_id, text=(
-                    "Welcome to your Vocabulary Assistant! 📘\n"
-                    "- Use `/add [word]` to add a word.\n"
-                    "- Use `/send` to get a quiz of 5 random words."
-                ))
-            else:
-                await bot.send_message(chat_id=chat_id, text=f"Want to add \"{text}\"? Try: /add {text}")
+# Create the bot application
 
-        asyncio.get_event_loop().run_until_complete(respond())
-        return "OK"
 
-    except Exception as e:
-        print("❌ Uncaught error in webhook handler!")
-        traceback.print_exc()  # 👈 this prints the full traceback to Vercel logs
-        return "Error", 500
+def handler(request):
+    token = os.environ.get("TELEGRAM_BOT_TOKEN")
+    # e.g. https://your-vercel-url.vercel.app
+    webhook_url = os.environ.get("WEBHOOK_URL")
+
+    app = Application.builder().token(token).build()
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("help", start))
+    app.add_handler(CommandHandler("add", add_word))
+    app.add_handler(CommandHandler("send", send_words))
+
+    return app.run_webhook(
+        listen="0.0.0.0",
+        port=int(os.environ.get("PORT", 8000)),
+        webhook_url=webhook_url,
+        request=request
+    )
