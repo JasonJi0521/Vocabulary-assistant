@@ -69,6 +69,9 @@ class handler(BaseHTTPRequestHandler):
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
             bot_app = build_bot_app()
+
+            # ✅ Initialize application before processing update
+            loop.run_until_complete(bot_app.initialize())
             loop.run_until_complete(bot_app.process_update(update))
             loop.close()
 
