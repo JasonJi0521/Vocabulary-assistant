@@ -64,11 +64,11 @@ class handler(BaseHTTPRequestHandler):
 
             print("📨 Telegram Update Received:\n", json.dumps(data, indent=2))
 
-            update = Update.de_json(data, build_bot_app().bot)
+            bot_app = build_bot_app()
+            update = Update.de_json(data, bot_app.bot)
 
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
-            bot_app = build_bot_app()
 
             # ✅ Initialize application before processing update
             loop.run_until_complete(bot_app.initialize())
