@@ -1,16 +1,31 @@
 import os
+from fastapi import FastAPI, Request
 from telegram import Update
 from telegram.ext import Application, CommandHandler, ContextTypes
 from utils.vocabulary_processor import process_new_word, get_random_words
+import asyncio
 
-# Define bot handlers
+TELEGRAM_TOKEN = os.environ["TELEGRAM_BOT_TOKEN"]
+bot_app = Application.builder().token(TELEGRAM_TOKEN).build()
+
+# FastAPI app
+app = FastAPI()
+
+# Telegram Handlers
+
+
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text(
+        "Welcome to your Vocabulary Assistant! 📘\n"
+        "- Use /add [word] to add a word.\n"
+        "- Use /send to get 5 review words."
+    )
 
 
 async def add_word(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
-        await update.message.reply_text("Please provide a word to add. Usage: /add [word]")
+        await update.message.reply_text("Please provide a word: /add [word]")
         return
-
     word = " ".join(context.args)
     success, message = process_new_word(word)
     await update.message.reply_text(message)
@@ -19,42 +34,27 @@ async def add_word(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def send_words(update: Update, context: ContextTypes.DEFAULT_TYPE):
     words = get_random_words(5)
     if not words:
-        await update.message.reply_text("No words found in your vocabulary book.")
+        await update.message.reply_text("No words in your vocabulary book.")
         return
-
-    message_text = "📚 *Your Vocabulary Review* 📚\n\n"
+    msg = "📚 *Your Vocabulary Review* 📚\n\n"
     for i, word in enumerate(words, 1):
-        message_text += f"*{i}. {word['word']}* ({word['word_class']})\n"
-        message_text += f"🇨🇳 {word['cn_meaning']}\n"
-        message_text += f"🇬🇧 {word['explanation']}\n\n"
+        msg += f"*{i}. {word['word']}* ({word['word_class']})\n"
+        msg += f"🇨🇳 {word['cn_meaning']}\n"
+        msg += f"🇬🇧 {word['explanation']}\n\n"
+    await update.message.reply_text(msg, parse_mode="Markdown")
 
-    await update.message.reply_text(message_text, parse_mode="Markdown")
-
-
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(
-        "Welcome to your Vocabulary Assistant! 📘\n"
-        "- Use /add [word] to add a new word.\n"
-        "- Use /send to review 5 random words."
-    )
-
-# Create the bot application
+# Register Handlers
+bot_app.add_handler(CommandHandler("start", start))
+bot_app.add_handler(CommandHandler("help", start))
+bot_app.add_handler(CommandHandler("add", add_word))
+bot_app.add_handler(CommandHandler("send", send_words))
 
 
-def handler(request):
-    token = os.environ.get("TELEGRAM_BOT_TOKEN")
-    # e.g. https://your-vercel-url.vercel.app
-    webhook_url = os.environ.get("WEBHOOK_URL")
+@app.post("/")
+async def telegram_webhook(request: Request):
+    body = await request.json()
+    update = Update.de_json(body, bot_app.bot)
 
-    app = Application.builder().token(token).build()
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("help", start))
-    app.add_handler(CommandHandler("add", add_word))
-    app.add_handler(CommandHandler("send", send_words))
-
-    return app.run_webhook(
-        listen="0.0.0.0",
-        port=int(os.environ.get("PORT", 8000)),
-        webhook_url=webhook_url,
-        request=request
-    )
+    await bot_app.initialize()
+    await bot_app.process_update(update)
+    return {"ok": True}

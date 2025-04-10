@@ -1,6 +1,5 @@
+fastapi
 python-telegram-bot==20.0
-openai
 notion-client
-flask  # optional if used elsewhere
+openai
 requests
-nest_asyncio
